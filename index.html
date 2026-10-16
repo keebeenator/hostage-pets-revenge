@@ -48,7 +48,7 @@ button{font:700 15px "Courier New",monospace;border:3px solid #000;padding:9px 1
  <h1>Hostage Pet's Revenge</h1>
  <div id="main">
   <div id="left">
-   <div id="frame"><canvas id="scene" width="160" height="120"></canvas><div id="tapHint">TAP TAP TAP!</div></div>
+   <div id="frame"><canvas id="scene" width="160" height="120"></canvas><div id="tapHint">TAP TAP TAP!</div><div id="rec" style="display:none;position:absolute;top:10%;left:0;right:0;text-align:center;color:#ffd166;font-size:clamp(18px,6vw,30px);text-shadow:3px 3px 0 #6a2a3a;pointer-events:none">NEW RECORD!</div></div>
    <div id="hud"><span id="lv" class="box">LV 1</span><span id="tm" class="box">3.0s</span><div id="meterWrap"><div id="meter"></div><div id="meterReq"></div><div id="meterLbl">SPEED</div></div></div>
   </div>
   <div id="right">
@@ -71,6 +71,10 @@ const reqRate=lv=>3+(lv-1)*0.2;           // taps/s needed to hold speed: 3.0 ..
 const PER_TAP=0.16;
 let level=Math.max(1,Math.min(10,+Q.get('level')||1)), best=+LS.get('pr_best',0)||0;
 let state='intro', t=0, timeLeft=0, energy=0, taps=[], wheelA=0, legT=0, anim=0, failT=0, anvil=null, pancake=false, stars=[], sweat=0, low=0;
+let fastest=+LS.get('pr_fastest',0)||0, recFlash=-1, recShown=false;
+const PEAK_WIN=1000, PEAK_MIN=5, PEAK_SPAN=500;
+function peak(now){const w=taps.filter(x=>now-x<=PEAK_WIN);if(w.length<PEAK_MIN)return;const span=w[w.length-1]-w[0];if(span<PEAK_SPAN)return;const r=(w.length-1)/(span/1000);
+  if(r>fastest+0.05){const had=fastest>0;fastest=Math.round(r*10)/10;LS.set('pr_fastest',fastest);if(had&&!recShown){recShown=true;recFlash=t+1.5;beep(988,0.12);}}}
 let sound=false, actx=null;
 // ---------- messages ----------
 const INTRO=[
@@ -226,7 +230,7 @@ function drawAvatar(){const old=G;G=AX;AX.clearRect(0,0,24,24);AX.fillStyle='#12
 // ---------- flow ----------
 function setNote(txt){ransom($('note'),txt);}
 function ui(){
-  $('lv').textContent='LV '+level+'/10';$('best').textContent='BEST: LV '+best;
+  $('lv').textContent='LV '+level+'/10';$('best').textContent='Fastest '+fastest.toFixed(1)+'/s';$('best').style.color=(t<recFlash)?'#ffd166':'#a99bbd';$('rec').style.display=(t<recFlash)?'block':'none';
   $('tm').textContent=(state==='run'?Math.max(0,timeLeft):state==='intro'?DUR[level-1]:0).toFixed(1)+'s';
   $('meter').style.width=Math.round(Math.max(0,Math.min(1,energy))*100)+'%';
   $('meterReq').style.left='calc('+Math.round((reqRate(level)/7)*100)+'% - 1px)';
@@ -236,7 +240,7 @@ function ui(){
 }
 function rate(){const now=performance.now();taps=taps.filter(x=>now-x<1200);return taps.length/1.2;}
 function intro(){state='intro';energy=0.7;pancake=false;anvil=null;timeLeft=DUR[level-1];setNote(INTRO[level-1]);$('bGo').textContent='Run! ('+DUR[level-1]+'s)';$('bGo').style.display='';ui();}
-function start(){state='run';energy=0.75;taps=[];timeLeft=DUR[level-1];low=0;$('bGo').style.display='none';beep(880,0.08);}
+function start(){recShown=false;state='run';energy=0.75;taps=[];timeLeft=DUR[level-1];low=0;$('bGo').style.display='none';beep(880,0.08);}
 function win(){state='win';best=Math.max(best,level);LS.set('pr_best',best);beep(523,0.1);setTimeout(()=>beep(784,0.15),110);
   if(level===10){LS.set('pr_beaten','1');playEnding(true);return;}
   setNote(WIN[(level-1)%WIN.length]);$('bGo').textContent='Next level';$('bGo').style.display='';}
@@ -252,7 +256,7 @@ $('bAgain').addEventListener('click',()=>{endTok++;$('end').style.display='none'
 $('bReplay').addEventListener('click',e=>{e.stopPropagation();playEnding();});
 $('bWatch').addEventListener('click',e=>{e.stopPropagation();playEnding();});
 function tap(e){ if(e.target.closest&&e.target.closest('button'))return; e.preventDefault();
-  if(state==='run'){taps.push(performance.now());energy=Math.min(1,energy+PER_TAP);legT+=0.5;beep(1200+Math.random()*200,0.02,'square',0.02);} }
+  if(state==='run'){const now=performance.now();taps.push(now);peak(now);energy=Math.min(1,energy+PER_TAP);legT+=0.5;beep(1200+Math.random()*200,0.02,'square',0.02);} }
 document.addEventListener('pointerdown',tap,{passive:false});
 document.addEventListener('touchstart',e=>{if(!(e.target.closest&&e.target.closest('button')))e.preventDefault();},{passive:false});
 document.addEventListener('dblclick',e=>e.preventDefault());document.addEventListener('gesturestart',e=>e.preventDefault());
@@ -272,7 +276,7 @@ function update(dt){
   if(anvil&&!pancake){anvil.v+=420*dt;anvil.y+=anvil.v*dt;const ry=WHY+WHR-32;if(anvil.y>=ry+15){pancake=true;beep(140,0.35,'square',0.08,60);{const tok=endTok;setTimeout(()=>{if(tok===endTok)endScreen();},1000);}}}
 }
 function frame(now){const dt=Math.min(0.05,(now-last)/1000);last=now;update(dt);render();ui();requestAnimationFrame(frame);}
-window.__pet={get state(){return state},get level(){return level},get energy(){return energy},get best(){return best},get pancake(){return pancake},setLevel(n){level=n;intro();},tap:()=>tap({target:document.body,preventDefault(){}})};
+window.__pet={get state(){return state},get level(){return level},get energy(){return energy},get best(){return best},get fastest(){return fastest},get pancake(){return pancake},setLevel(n){level=n;intro();},tap:()=>tap({target:document.body,preventDefault(){}})};
 drawAvatar();intro();
 if(DEMO==='run'){level=3;intro();start();energy=0.85;timeLeft=4.2;for(let i=0;i<5;i++)taps.push(performance.now()-i*200);window.__freezeDemo=1;}
 if(DEMO==='fail'){level=4;intro();start();fail();t=2.2;failT=0;}
