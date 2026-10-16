@@ -53,11 +53,11 @@ button{font:700 15px "Courier New",monospace;border:3px solid #000;padding:9px 1
   </div>
   <div id="right">
    <div id="panel" class="box"><canvas id="ava" width="24" height="24"></canvas><div><div id="from">From: Snuffy (your former hostage)</div><div id="note"></div></div></div>
-   <div id="btns"><button id="bSound" class="sec">Sound: off</button><span id="best" style="align-self:center;font-size:11px;color:#a99bbd"></span><button id="bGo" class="pri">Run!</button></div>
+   <div id="btns"><button id="bSound" class="sec">Sound: off</button><button id="bWatch" class="sec" style="display:none;font-size:12px;padding:6px 8px">Watch ending</button><span id="best" style="align-self:center;font-size:11px;color:#a99bbd"></span><button id="bGo" class="pri">Run!</button></div>
   </div>
  </div>
 </div>
-<div id="end"><div class="box"><h2>YOU WON!</h2><div id="endNote" style="margin:8px 0 14px;line-height:1.9"></div><button id="bAgain" class="pri">Play again</button></div></div>
+<div id="end"><div class="box"><h2>YOU WON!</h2><div id="endNote" style="margin:8px 0 14px;line-height:1.9"></div><button id="bReplay" class="sec">🔁 Replay ending</button> <button id="bAgain" class="pri">Play again</button></div></div>
 <script>
 (()=>{
 'use strict';
@@ -231,20 +231,26 @@ function ui(){
   $('meter').style.width=Math.round(Math.max(0,Math.min(1,energy))*100)+'%';
   $('meterReq').style.left='calc('+Math.round((reqRate(level)/7)*100)+'% - 1px)';
   $('meterLbl').textContent=(rate().toFixed(1))+' / '+reqRate(level).toFixed(1)+' taps/s';
+  $('bWatch').style.display=(state==='intro'&&LS.get('pr_beaten','0')==='1')?'':'none';
   $('tapHint').style.display=state==='run'?'block':'none';
 }
 function rate(){const now=performance.now();taps=taps.filter(x=>now-x<1200);return taps.length/1.2;}
 function intro(){state='intro';energy=0.7;pancake=false;anvil=null;timeLeft=DUR[level-1];setNote(INTRO[level-1]);$('bGo').textContent='Run! ('+DUR[level-1]+'s)';$('bGo').style.display='';ui();}
 function start(){state='run';energy=0.75;taps=[];timeLeft=DUR[level-1];low=0;$('bGo').style.display='none';beep(880,0.08);}
 function win(){state='win';best=Math.max(best,level);LS.set('pr_best',best);beep(523,0.1);setTimeout(()=>beep(784,0.15),110);
-  if(level===10){$('bGo').style.display='none';setNote('HUFF... HUFF... I DID IT!');setTimeout(dropAnvil,1100);return;}
+  if(level===10){LS.set('pr_beaten','1');playEnding(true);return;}
   setNote(WIN[(level-1)%WIN.length]);$('bGo').textContent='Next level';$('bGo').style.display='';}
 function fail(){state='fail';failT=t;beep(300,0.5,'sawtooth',0.05,90);setNote(FAIL[(Math.random()*FAIL.length)|0]);$('bGo').textContent='Try again';$('bGo').style.display='';}
+let endTok=0;
+function playEnding(fromWin){const tok=++endTok;$('end').style.display='none';level=10;state='win';pancake=false;anvil=null;energy=1;$('bGo').style.display='none';setNote('HUFF... HUFF... I DID IT!');
+  setTimeout(()=>{if(tok===endTok)dropAnvil();},1100);}
 function dropAnvil(){anvil={y:-14,v:0};beep(1800,0.9,'sine',0.04,300);}
 function endScreen(){ransom($('endNote'),ANVIL);setNote('SPLAT. OOPS. HEH HEH.');$('end').style.display='flex';}
 $('bGo').addEventListener('click',e=>{e.stopPropagation();
   if(state==='intro')start(); else if(state==='win'){level=Math.min(10,level+1);intro();} else if(state==='fail')intro();});
-$('bAgain').addEventListener('click',()=>{$('end').style.display='none';level=1;intro();});
+$('bAgain').addEventListener('click',()=>{endTok++;$('end').style.display='none';level=1;intro();});
+$('bReplay').addEventListener('click',e=>{e.stopPropagation();playEnding();});
+$('bWatch').addEventListener('click',e=>{e.stopPropagation();playEnding();});
 function tap(e){ if(e.target.closest&&e.target.closest('button'))return; e.preventDefault();
   if(state==='run'){taps.push(performance.now());energy=Math.min(1,energy+PER_TAP);legT+=0.5;beep(1200+Math.random()*200,0.02,'square',0.02);} }
 document.addEventListener('pointerdown',tap,{passive:false});
@@ -263,7 +269,7 @@ function update(dt){
   }
   const spin= state==='run'? (0.6+energy*5) : state==='win'?0.3:0;
   wheelA+=spin*dt; legT+=spin*dt*1.4;
-  if(anvil&&!pancake){anvil.v+=420*dt;anvil.y+=anvil.v*dt;const ry=WHY+WHR-32;if(anvil.y>=ry+15){pancake=true;beep(140,0.35,'square',0.08,60);setTimeout(endScreen,1000);}}
+  if(anvil&&!pancake){anvil.v+=420*dt;anvil.y+=anvil.v*dt;const ry=WHY+WHR-32;if(anvil.y>=ry+15){pancake=true;beep(140,0.35,'square',0.08,60);{const tok=endTok;setTimeout(()=>{if(tok===endTok)endScreen();},1000);}}}
 }
 function frame(now){const dt=Math.min(0.05,(now-last)/1000);last=now;update(dt);render();ui();requestAnimationFrame(frame);}
 window.__pet={get state(){return state},get level(){return level},get energy(){return energy},get best(){return best},get pancake(){return pancake},setLevel(n){level=n;intro();},tap:()=>tap({target:document.body,preventDefault(){}})};
